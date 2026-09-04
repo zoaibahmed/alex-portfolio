@@ -16,6 +16,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
 
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="alternate icon" href="favicon.ico" />
+
   <!-- GSAP & Lenis Smooth Scroll -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
@@ -3960,33 +3964,48 @@
         return false;
       }
 
-      // Production Netlify AJAX Submission
-      const formData = new FormData(form);
-      const encodedData = new URLSearchParams(formData).toString();
+      const payload = {
+        name: form.elements['name']?.value.trim(),
+        email: form.elements['email']?.value.trim(),
+        service: form.elements['service']?.value,
+        message: form.elements['message']?.value.trim()
+      };
 
-      fetch(window.location.pathname || '/', {
+      // 1. Primary: Serverless Gmail SMTP function with Nodemailer
+      fetch('/.netlify/functions/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: encodedData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
-      .then(response => {
-        if (response.ok || response.status === 200 || response.status === 302 || response.status === 303) {
-          if (feedback) {
-            feedback.className = 'form-feedback-notice is-success';
-            feedback.style.display = 'block';
-            feedback.innerHTML = '<strong>Inquiry Sent Successfully!</strong> Thank you for reaching out. We will review your brief and respond within 24 hours.';
-          }
-          form.reset();
-        } else {
-          throw new Error('Server status ' + response.status);
+      .then(async (response) => {
+        if (response.ok) {
+          return response.json();
         }
+        // 2. Secondary Fallback: Standard Netlify Forms Edge POST
+        const formData = new FormData(form);
+        return fetch(window.location.pathname || '/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(formData).toString()
+        }).then(r => {
+          if (r.ok || r.status === 200 || r.status === 302 || r.status === 303) return { success: true };
+          throw new Error('All channels returned error: ' + r.status);
+        });
+      })
+      .then(() => {
+        if (feedback) {
+          feedback.className = 'form-feedback-notice is-success';
+          feedback.style.display = 'block';
+          feedback.innerHTML = '<strong>Inquiry Sent Successfully!</strong> Thank you for reaching out. We will review your brief and respond within 24 hours.';
+        }
+        form.reset();
       })
       .catch(error => {
         console.warn('Form submission response:', error);
         if (feedback) {
           feedback.className = 'form-feedback-notice is-error';
           feedback.style.display = 'block';
-          feedback.innerHTML = 'Server is updating. You can email Alex directly at <a href="mailto:alexbruclee68@gmail.com?subject=Project%20Inquiry" style="color:#FFF;text-decoration:underline;font-weight:600;">alexbruclee68@gmail.com</a>.';
+          feedback.innerHTML = 'Server is syncing. Please email Alex directly at <a href="mailto:alexbruclee68@gmail.com?subject=Project%20Inquiry" style="color:#FFF;text-decoration:underline;font-weight:600;">alexbruclee68@gmail.com</a> or click the button below to copy the address.';
         }
       })
       .finally(() => {
