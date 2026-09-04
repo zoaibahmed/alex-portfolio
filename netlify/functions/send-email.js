@@ -14,12 +14,21 @@ exports.handler = async (event) => {
   }
 
   try {
-    let data;
+    let rawBody = event.body || '{}';
+    if (event.isBase64Encoded) {
+      try {
+        rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
+      } catch (e) {
+        console.warn('Base64 decode warning:', e);
+      }
+    }
+
+    let data = {};
     try {
-      data = JSON.parse(event.body || '{}');
+      data = JSON.parse(rawBody);
     } catch (e) {
       // Fallback in case sent as form-urlencoded
-      const params = new URLSearchParams(event.body);
+      const params = new URLSearchParams(rawBody);
       data = Object.fromEntries(params.entries());
     }
 
@@ -32,15 +41,41 @@ exports.handler = async (event) => {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
-        body: JSON.stringify({ error: 'Name, email, and message are required.' })
+        body: JSON.stringify({ 
+          error: 'Name, email, and message are required fields.',
+          received: { hasName: !!name, hasEmail: !!email, hasMessage: !!message }
+        })
       };
     }
 
-    const gmailUser = process.env.GMAIL_USER || 'alexbruclee68@gmail.com';
-    const gmailPass = process.env.GMAIL_PASS;
+    // Flexible env variable resolution (supports GMAIL_PASS, GMAIL_PASSWORD, APP_PASSWORD, etc.)
+    const rawPass = (
+      process.env.GMAIL_PASS || 
+      process.env.GMAIL_PASSWORD || 
+      process.env.GMAIL_APP_PASSWORD || 
+      process.env.APP_PASSWORD || 
+      process.env.EMAIL_PASS ||
+      process.env.gmail_pass ||
+      process.env.gmail_password
+    );
+
+    const gmailPass = rawPass ? rawPass.trim().replace(/\s+/g, '') : null;
+
+    const gmailUser = (
+      process.env.GMAIL_USER || 
+      process.env.GMAIL_EMAIL || 
+      process.env.EMAIL_USER || 
+      'alexbruclee68@gmail.com'
+    ).trim();
 
     if (!gmailPass) {
-      console.warn('GMAIL_PASS environment variable is not configured.');
+      console.warn('GMAIL_PASS is not detected in Netlify environment variables.');
+      const matchingKeys = Object.keys(process.env).filter(k => 
+        k.toLowerCase().includes('gmail') || 
+        k.toLowerCase().includes('pass') || 
+        k.toLowerCase().includes('mail')
+      );
+
       return {
         statusCode: 500,
         headers: { 
@@ -48,13 +83,17 @@ exports.handler = async (event) => {
           'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({ 
-          error: 'Email service configuration pending (GMAIL_PASS required).'
+          error: 'GMAIL_PASS is not detected yet. In Netlify, adding environment variables requires a new deploy to take effect.',
+          detected_relevant_keys: matchingKeys,
+          note: 'Please trigger a new deploy in Netlify or run git push.'
         })
       };
     }
 
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         user: gmailUser,
         pass: gmailPass
@@ -68,7 +107,7 @@ exports.handler = async (event) => {
       subject: `[Client Inquiry] ${name} — ${service || 'General Project'}`,
       text: `Client Name: ${name}\nClient Email: ${email}\nService Scope: ${service || 'General Inquiry'}\n\nProject Overview:\n${message}`,
       html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; color: #111;">
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; color: #111;">
           <div style="border-bottom: 2px solid #1D4ED8; padding-bottom: 16px; margin-bottom: 24px;">
             <h2 style="margin: 0; color: #111827; font-size: 20px; font-weight: 700; letter-spacing: -0.02em;">New Project Inquiry</h2>
             <p style="margin: 6px 0 0 0; color: #6B7280; font-size: 13px;">Received via alex-studio platform inquiry form</p>
