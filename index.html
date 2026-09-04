@@ -2146,6 +2146,7 @@
 </head>
 <body>
 
+
   <!-- Top Global Scroll Progress Bar -->
   <div class="scroll-progress-bar" id="scroll-progress-bar" aria-hidden="true"></div>
 
@@ -3145,7 +3146,7 @@
           <h3 class="form-card-title">Send a Project Inquiry</h3>
           <p class="form-card-sub">Share your requirements and we will review and respond with a proposed plan within 24 hours.</p>
 
-          <form id="contact-form" name="contact" method="POST" netlify data-netlify="true" netlify-honeypot="bot-field" onsubmit="handleFormSubmit(event)">
+          <form id="contact-form" name="contact" method="POST" action="/?success=true" netlify data-netlify="true" netlify-honeypot="bot-field" onsubmit="handleFormSubmit(event)">
             <!-- Required for Netlify Forms routing -->
             <input type="hidden" name="form-name" value="contact" />
             <p style="display: none;">
@@ -3963,26 +3964,29 @@
       const formData = new FormData(form);
       const encodedData = new URLSearchParams(formData).toString();
 
-      fetch('/', {
+      fetch(window.location.pathname || '/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: encodedData
       })
       .then(response => {
-        if (response.ok) {
+        if (response.ok || response.status === 200 || response.status === 302 || response.status === 303) {
           if (feedback) {
             feedback.className = 'form-feedback-notice is-success';
+            feedback.style.display = 'block';
             feedback.innerHTML = '<strong>Inquiry Sent Successfully!</strong> Thank you for reaching out. We will review your brief and respond within 24 hours.';
           }
           form.reset();
         } else {
-          throw new Error('Network response was not ok');
+          throw new Error('Server status ' + response.status);
         }
       })
       .catch(error => {
+        console.warn('Form submission response:', error);
         if (feedback) {
           feedback.className = 'form-feedback-notice is-error';
-          feedback.innerHTML = 'There was an issue sending your message. Please email directly at <a href="mailto:alexbruclee68@gmail.com" style="color:#FFF;text-decoration:underline;">alexbruclee68@gmail.com</a>.';
+          feedback.style.display = 'block';
+          feedback.innerHTML = 'Server is updating. You can email Alex directly at <a href="mailto:alexbruclee68@gmail.com?subject=Project%20Inquiry" style="color:#FFF;text-decoration:underline;font-weight:600;">alexbruclee68@gmail.com</a>.';
         }
       })
       .finally(() => {
@@ -3991,6 +3995,16 @@
       });
 
       return false;
+    }
+
+    // Check for native form submission redirect
+    if (window.location.search.includes('success=true')) {
+      const feedback = document.getElementById('form-feedback');
+      if (feedback) {
+        feedback.className = 'form-feedback-notice is-success';
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<strong>Inquiry Sent Successfully!</strong> Thank you for reaching out. We will review your brief and respond within 24 hours.';
+      }
     }
 
     // Copy Email helper
